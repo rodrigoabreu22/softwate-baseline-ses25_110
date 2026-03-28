@@ -1,0 +1,27 @@
+name: SAST Pipeline (Semgrep)
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  security-scan:
+    name: Semgrep Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Run Semgrep (default rules)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/default"
+          generateSarif: "1"
+
+      - name: Run Semgrep (secrets)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/secrets"
+          generateSarif: "1"
