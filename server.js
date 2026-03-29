@@ -1,9 +1,16 @@
-const { exec } = require('child_process');
-function pingServer(userIP) {
-// DANGER: Taking untrusted user input and putting it directly into a system command!
-// An attacker could pass an IP like: "8.8.8.8; rm -rf /"
-const command = "ping -c 4 " + userIP;
-exec(command, (error, stdout, stderr) => {
-console.log(stdout);
-});
+// server.js
+const axios = require("axios");
+
+async function checkHttp(url) {
+  // Consider enforcing an allowlist of hosts/URLs to prevent SSRF.
+  const res = await axios.get(url, {
+    timeout: 5000,
+    maxRedirects: 0,
+    validateStatus: () => true, // handle status codes yourself
+  });
+
+  console.log(`Status: ${res.status}`);
+  return res.status;
 }
+
+module.exports = { checkHttp };
