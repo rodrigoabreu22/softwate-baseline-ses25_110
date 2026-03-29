@@ -14,6 +14,6 @@ repos:
       - id: eslint-security
         name: ESLint Security (frontend)
         language: system
-        entry: bash -c 'cd frontend/Pizzagate && npm run lint'
+        entry: bash -c 'cd frontend/Pizzagate && npm run lint -- --max-warnings 0'
         pass_filenames: false
         files: \.(ts|tsx|js|jsx)$
