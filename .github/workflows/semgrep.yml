@@ -2,21 +2,103 @@ name: SAST Pipeline (Semgrep)
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["master"]
   push:
-    branches: [ "main" ]
+    branches: ["master"]
   workflow_dispatch:
 
 jobs:
   security-scan:
     name: Semgrep Analysis
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Semgrep
-        run: pip install semgrep
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Run Semgrep SAST
-        run: semgrep scan --config p/default --config p/secrets --error --skip-unknown-extensions
+      - name: Install Semgrep
+        run: python3 -m pip install --disable-pip-version-check semgrep
+
+      - name: Run Semgrep default rules
+        continue-on-error: true
+        run: |
+          mkdir -p .semgrep-results
+          semgrep scan \
+            --config p/default \
+            --json \
+            --output .semgrep-results/default.json \
+            --exclude .semgrep-results \
+            .
+
+      - name: Run Semgrep secrets rules
+        continue-on-error: true
+        run: |
+          mkdir -p .semgrep-results
+          semgrep scan \
+            --config p/secrets \
+            --json \
+            --output .semgrep-results/secrets.json \
+            --exclude .semgrep-results \
+            .
+
+      - name: Render Semgrep PR comment
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          python3 .github/scripts/render-semgrep-pr-comment.py \
+            .semgrep-results/default.json \
+            .semgrep-results/secrets.json
+
+      - name: Comment Semgrep summary on PR
+        if: ${{ github.event_name == 'pull_request' && hashFiles('.semgrep-results/pr_comment.md') != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/.semgrep-results/pr_comment.md`, 'utf8');
+            const marker = '<!-- semgrep-pr-summary -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body && comment.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Evaluate Semgrep results
+        run: |
+          python3 .github/scripts/evaluate-semgrep-results.py \
+            .semgrep-results/default.json \
+            .semgrep-results/secrets.json
+
+      - name: Upload Semgrep artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: .semgrep-results
+          retention-days: 14
